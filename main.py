@@ -1,17 +1,28 @@
 import asyncio
-import signal
 import json
 import websockets
 from config import AZURE_BLOB_STORAGE_CONNECTION_STRING
-from stream.process_post import process_post_message
-from stream.uploader import schedule_bulk_upload
+from stream.process_post import PostProcessor
+
+# Configuration
+FOLDER_PATH = "data"
+CONTAINER_NAME = "stoltzmaniac"
+HASHTAGS_TO_TRACK = [
+    "rstats", "python", "stata", "sql", "html", "css", "javascript", "golang",
+    "java", "csharp", "cplusplus", "trump", "loomer", "twitter", "musk", "elon"
+]
+URI = "wss://jetstream2.us-east.bsky.network/subscribe?wantedCollections=app.bsky.feed.post"
 
 
-async def process_stream(hashtags_of_interest: list, folder_path: str):
-    URI = "wss://jetstream2.us-east.bsky.network/subscribe?wantedCollections=app.bsky.feed.post"
-    message_count = 0
+async def process_stream(post_processor: PostProcessor):
+    """
+    Connect to Jetstream WebSocket and process incoming data stream.
+
+    Args:
+        post_processor (PostProcessor): The post processor instance.
+    """
+    print("[INFO] Connecting to Jetstream WebSocket...")
     while True:
-        print("[INFO] Connecting to Jetstream...")
         try:
             async with websockets.connect(URI) as websocket:
                 print("[INFO] Connected. Listening for posts...")
@@ -24,16 +35,9 @@ async def process_stream(hashtags_of_interest: list, folder_path: str):
                             commit_data = data.get("commit", {})
                             collection = commit_data.get("collection")
                             if collection == "app.bsky.feed.post":
-                                message_count += 1
-                                if message_count % 100 == 0:
-                                    print(f"[INFO] Processed message count: {message_count}")
-                                await process_post_message(
-                                    hashtags_of_interest=hashtags_of_interest,
-                                    data=data,
-                                    folder_path=folder_path,
-                                )
+                                await post_processor.process_post_message(HASHTAGS_TO_TRACK, data)
                     except asyncio.TimeoutError:
-                        continue  # If no message within 5 seconds, loop again
+                        continue
         except websockets.ConnectionClosed as e:
             print(f"[ERROR] WebSocket connection closed: {e}. Retrying in 5 seconds...")
             await asyncio.sleep(5)
@@ -43,36 +47,16 @@ async def process_stream(hashtags_of_interest: list, folder_path: str):
 
 
 async def main():
-    hashtags_to_track = [
-        "rstats", "python", "stata", "sql", "html", "css", "javascript", "golang", "java", "csharp", "cplusplus", "trump", "loomer", "twitter", "musk", "elon"
-    ]
-    container_name = "stoltzmaniac"
-    folder_path = "data"
-    upload_interval = 10  # 20 seconds
-    connection_string = AZURE_BLOB_STORAGE_CONNECTION_STRING
+    # Ensure the Azure connection string is set
+    if not AZURE_BLOB_STORAGE_CONNECTION_STRING:
+        raise ValueError("[ERROR] AZURE_BLOB_STORAGE_CONNECTION_STRING is not set.")
 
-    if not connection_string:
-        raise ValueError("[ERROR] AZURE_STORAGE_CONNECTION_STRING environment variable not set.")
+    # Initialize the post processor
+    post_processor = PostProcessor(FOLDER_PATH, AZURE_BLOB_STORAGE_CONNECTION_STRING, CONTAINER_NAME, max_buffer_size = 10485760)
 
-    stream_task = asyncio.create_task(process_stream(hashtags_to_track, folder_path))
-    upload_task = asyncio.create_task(schedule_bulk_upload(container_name, folder_path, connection_string, upload_interval))
-
-    tasks = [stream_task, upload_task]
-
-    def shutdown_handler():
-        for task in tasks:
-            task.cancel()
-
-    loop = asyncio.get_running_loop()
-    loop.add_signal_handler(signal.SIGINT, shutdown_handler)
-    loop.add_signal_handler(signal.SIGTERM, shutdown_handler)
-
-    try:
-        await asyncio.gather(*tasks)
-    except asyncio.CancelledError:
-        print("[INFO] Tasks have been cancelled. Shutting down gracefully.")
+    # Start processing the stream
+    await process_stream(post_processor)
 
 
 if __name__ == "__main__":
-    # Run the main coroutine
     asyncio.run(main())
