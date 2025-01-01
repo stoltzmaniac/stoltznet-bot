@@ -11,7 +11,7 @@ from stream.process_post import PostProcessor
 LOG_FILE = "/var/log/postprocessor.log"
 
 logging.basicConfig(
-    level=logging.INFO,  # Default log level
+    level=logging.DEBUG,  # Default log level
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         RotatingFileHandler(LOG_FILE, maxBytes=20485760, backupCount=5),  # Log to file
