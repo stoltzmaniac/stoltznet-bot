@@ -52,7 +52,7 @@ async def main():
         raise ValueError("[ERROR] AZURE_BLOB_STORAGE_CONNECTION_STRING is not set.")
 
     # Initialize the post processor
-    post_processor = PostProcessor(FOLDER_PATH, AZURE_BLOB_STORAGE_CONNECTION_STRING, CONTAINER_NAME, max_buffer_size = 10485760)
+    post_processor = PostProcessor(FOLDER_PATH, AZURE_BLOB_STORAGE_CONNECTION_STRING, CONTAINER_NAME, max_buffer_size = 20485760, log_interval_seconds = 30)
 
     # Start processing the stream
     await process_stream(post_processor)

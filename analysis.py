@@ -28,7 +28,7 @@ sql = """
 SELECT 
     hashtag,
     COUNT(*) AS count
-FROM read_parquet('azure://stoltzmaniac/hashtag_data/*/*.parquet')
+FROM read_parquet('azure://stoltzmaniac/hashtag_data/*.parquet')
 GROUP BY hashtag
 ORDER BY count DESC
 """
