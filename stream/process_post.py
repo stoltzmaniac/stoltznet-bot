@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 import pandas as pd
@@ -46,7 +47,7 @@ class PostProcessor:
             current_time = time.time()
             if current_time - self.last_log_time >= self.log_interval_seconds:
                 buffer_size = self.buffer.memory_usage(deep=True).sum()
-                print(f"[INFO] Current buffer size: {buffer_size / (1024 * 1024):.2f} MB")
+                logging.info(f"Current buffer size: {buffer_size / (1024 * 1024):.2f} MB")
                 self.last_log_time = current_time
 
             # Check if the buffer size exceeds the limit
@@ -94,14 +95,14 @@ class PostProcessor:
         Write the buffer to a Parquet file, upload it to Azure, and reset the buffer.
         """
         if self.buffer.empty:
-            print("[INFO] Buffer is empty, skipping write and upload.")
+            logging.info("Buffer is empty, skipping write and upload.")
             return
 
         # Write the buffer to a Parquet file
         file_name = f"data_{int(time.time())}.parquet"
         file_path = os.path.join(self.folder_path, file_name)
         self.buffer.to_parquet(file_path, index=False, engine="pyarrow", compression="snappy")
-        print(f"[INFO] Written buffer to file: {file_path}")
+        logging.info(f"Written buffer to file: {file_path}")
 
         # Reset the buffer
         self.buffer = pd.DataFrame()
@@ -120,13 +121,13 @@ class PostProcessor:
         blob_client = blob_service_client.get_blob_client(self.container_name, f"hashtag_data/{os.path.basename(file_path)}")
 
         try:
-            print(f"[INFO] Uploading file to Azure: {file_path}")
+            logging.info(f"Uploading file to Azure: {file_path}")
             with open(file_path, "rb") as data:
                 blob_client.upload_blob(data, overwrite=True)
-            print(f"[INFO] Successfully uploaded file: {file_path}")
+            logging.info(f"Successfully uploaded file: {file_path}")
 
             # Delete the local file after upload
             os.remove(file_path)
-            print(f"[INFO] Deleted local file: {file_path}")
+            logging.info(f"Deleted local file: {file_path}")
         except Exception as e:
-            print(f"[ERROR] Failed to upload file {file_path}: {e}")
+            logging.error(f"Failed to upload file {file_path}: {e}")
