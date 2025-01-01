@@ -21,14 +21,6 @@ async def parse_data(hashtags_of_interest: list, data: dict) -> list:
         for feature in features:
             if feature.get("$type") == "app.bsky.richtext.facet#tag":
                 raw_tag = feature.get("tag", "").strip().lower()
-                # if raw_tag in hashtags_of_interest:
-                #     parsed_rows.append({
-                #         "created_at": created_at,
-                #         "cid": cid,
-                #         "did": did,
-                #         "hashtag": raw_tag,
-                #         "text": text,
-                #     })
                 parsed_rows.append({
                     "created_at": created_at,
                     "cid": cid,
@@ -42,24 +34,36 @@ async def parse_data(hashtags_of_interest: list, data: dict) -> list:
 
 async def write_parquet_data(data: list, folder_path: str):
     """
-    Write parsed data to a single Parquet file in the specified folder.
+    Write parsed data to partitioned Parquet files based on hashtag.
     """
-    # Ensure the folder exists
-    os.makedirs(folder_path, exist_ok=True)
-
-    # Construct the file path
-    now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    file_path = os.path.join(folder_path, f"hashtag_data_{now}.parquet")
-
     # Convert data to a DataFrame
     df = pd.DataFrame(data)
 
     if not df.empty:
-        # Write DataFrame to a Parquet file
-        df.to_parquet(file_path, index=False)
-        print(f"[INFO] Written data to {file_path}")
+        # Ensure `created_at` is parsed as datetime
+        if 'created_at' in df.columns:
+            df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
+
+        # Partition by hashtag
+        for hashtag, group in df.groupby('hashtag'):
+            # Construct the partitioned file path
+            now = group['created_at'].min().strftime("%Y%m%d%H%M%S") if not group['created_at'].isna().all() else datetime.utcnow().strftime("%Y%m%d%H%M%S")
+            partitioned_folder_path = os.path.join(folder_path, f"hashtag={hashtag}")
+            os.makedirs(partitioned_folder_path, exist_ok=True)
+
+            file_path = os.path.join(partitioned_folder_path, f"hashtag_data_{now}.parquet")
+
+            # Write Parquet file
+            group.to_parquet(
+                file_path,
+                index=False,
+                engine="pyarrow",
+                compression="snappy"
+            )
+            print(f"[INFO] Written data to {file_path}")
     else:
         print("[INFO] No data to write.")
+
 
 
 async def process_post_message(hashtags_of_interest: list, data: dict, folder_path: str):
